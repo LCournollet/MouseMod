@@ -9,6 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
+    QEvent,
     QPoint,
     QPropertyAnimation,
     QRect,
@@ -28,6 +29,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QApplication,
     QComboBox,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -591,13 +593,24 @@ class FramelessWindow(QWidget):
         self._resize_edge: str | None = None
         self._resize_origin: QPoint | None = None
         self._resize_geometry: QRect | None = None
+        self._cursor_edge: str | None = None
+
+        application = QApplication.instance()
+        if application is not None:
+            application.installEventFilter(self)
 
     # -- resizing ----------------------------------------------------------
 
     def _edge_at(self, position: QPoint) -> str | None:
+        """Which resize edge a point falls on, if any.
+
+        The band is kept inside the transparent shadow margin, which the window
+        owns outright. Reaching further in would put the band under child
+        widgets, which swallow the mouse events the resize needs.
+        """
         from .theme import SHADOW_MARGIN
 
-        margin = SHADOW_MARGIN + self.RESIZE_MARGIN
+        margin = min(SHADOW_MARGIN, self.RESIZE_MARGIN + 2)
         x, y, width, height = position.x(), position.y(), self.width(), self.height()
 
         left = x <= margin
@@ -666,15 +679,61 @@ class FramelessWindow(QWidget):
             event.accept()
             return
 
-        self.setCursor(self._cursor_for(self._edge_at(event.position().toPoint())))
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         self._resize_edge = None
         self._resize_origin = None
         self._resize_geometry = None
-        self.unsetCursor()
+        self._apply_cursor(None)
         super().mouseReleaseEvent(event)
+
+    # -- cursor ------------------------------------------------------------
+
+    def _apply_cursor(self, edge: str | None) -> None:
+        """Set the resize cursor, or give it back to whatever is underneath.
+
+        unsetCursor() rather than an explicit arrow: children with a cursor of
+        their own (buttons, text fields) must keep it.
+        """
+        if edge == self._cursor_edge:
+            return
+        self._cursor_edge = edge
+        if edge is None:
+            self.unsetCursor()
+        else:
+            self.setCursor(self._cursor_for(edge))
+
+    def _update_cursor_from(self, global_position: QPoint) -> None:
+        if self._resize_edge:
+            return
+        local = self.mapFromGlobal(global_position)
+        edge = self._edge_at(local) if self.rect().contains(local) else None
+        self._apply_cursor(edge)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        """Track the pointer across the whole window.
+
+        Child widgets consume their own mouse moves, so without an
+        application-level filter the resize cursor set at an edge would never
+        be cleared once the pointer moved inland - and every child without its
+        own cursor would inherit it.
+        """
+        if event.type() == QEvent.MouseMove and self.isVisible():
+            try:
+                self._update_cursor_from(event.globalPosition().toPoint())
+            except (AttributeError, RuntimeError):
+                pass
+        return False
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        if not self._resize_edge:
+            self._apply_cursor(None)
+        super().leaveEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._apply_cursor(None)
+        super().closeEvent(event)
 
 
 # --- iconography --------------------------------------------------------------
