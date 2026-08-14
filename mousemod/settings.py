@@ -12,6 +12,9 @@ from .device import Mouse
 from .macros import Macro, default_macros
 from .macros import read_all as read_macros
 from .macros import write_all as write_macros
+from .shortcuts import ShortcutStep, default_shortcuts
+from .shortcuts import read_all as read_shortcuts
+from .shortcuts import write_all as write_shortcuts
 from .protocol import (
     BUTTON_ADDR,
     BUTTON_DEFAULTS,
@@ -68,11 +71,15 @@ class Settings:
     sensor_angle: int = 0
     buttons: dict[str, ButtonAction] = field(default_factory=dict)
     macros: list[Macro] = field(default_factory=default_macros)
+    shortcuts: dict[str, list[ShortcutStep]] = field(default_factory=default_shortcuts)
 
     def to_dict(self) -> dict:
         data = asdict(self)
         data["buttons"] = {k: asdict(v) for k, v in self.buttons.items()}
         data["macros"] = [m.to_dict() for m in self.macros]
+        data["shortcuts"] = {
+            k: [asdict(s) for s in v] for k, v in self.shortcuts.items()
+        }
         return data
 
     @classmethod
@@ -80,12 +87,18 @@ class Settings:
         data = dict(data)
         buttons = data.pop("buttons", {}) or {}
         macros = data.pop("macros", None)
-        known = {f for f in cls.__dataclass_fields__ if f not in ("buttons", "macros")}
+        shortcuts = data.pop("shortcuts", None)
+        skip = ("buttons", "macros", "shortcuts")
+        known = {f for f in cls.__dataclass_fields__ if f not in skip}
         clean = {k: v for k, v in data.items() if k in known}
         result = cls(**clean)
         result.buttons = {k: ButtonAction(**v) for k, v in buttons.items()}
         if macros is not None:
             result.macros = [Macro.from_dict(m) for m in macros]
+        if shortcuts is not None:
+            result.shortcuts = {
+                k: [ShortcutStep(**s) for s in v] for k, v in shortcuts.items()
+            }
         return result
 
     def copy(self) -> "Settings":
@@ -94,6 +107,7 @@ class Settings:
             dpi_stages=list(self.dpi_stages),
             buttons=dict(self.buttons),
             macros=[m.copy() for m in self.macros],
+            shortcuts={k: list(v) for k, v in self.shortcuts.items()},
         )
 
 
@@ -154,6 +168,7 @@ def read_settings(mouse: Mouse, include_macros: bool = True) -> Settings:
         sensor_angle=_scalar(mouse, int(Addr.ANGLE)),
         buttons=read_buttons(mouse),
         macros=read_macros(mouse) if include_macros else default_macros(),
+        shortcuts=read_shortcuts(mouse),
     )
 
 
@@ -258,6 +273,9 @@ def apply_settings(mouse: Mouse, settings: Settings, current: Settings | None = 
     # Macros first: a button pointing at a slot should never run the old
     # contents, however briefly.
     write_macros(mouse, settings.macros, None if current is None else current.macros)
+    write_shortcuts(
+        mouse, settings.shortcuts, None if current is None else current.shortcuts
+    )
 
     for name, action in settings.buttons.items():
         if current is None or current.buttons.get(name) != action:
@@ -298,7 +316,7 @@ def describe_action(action: ButtonAction) -> str:
     if kind == ButtonClass.FIREPOWER_KEY:
         return f"Rapid fire ({action.value1})"
     if kind == ButtonClass.SHORTCUT_KEY:
-        return "Keyboard shortcut"
+        return "Keyboard combination"
     if kind == ButtonClass.MACRO:
         from .macros import REPEAT_LABELS, decode_repeat
 

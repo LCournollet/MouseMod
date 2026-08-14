@@ -31,7 +31,15 @@ from PySide6.QtWidgets import (
 )
 
 from .profiles import Profile
-from .protocol import MACRO_SLOTS, ButtonClass, DpiValue, MouseValue, WheelValue
+from .protocol import (
+    MACRO_SLOTS,
+    SHORTCUT_MAX_KEYS,
+    ButtonClass,
+    DpiValue,
+    MouseValue,
+    WheelValue,
+)
+from .shortcut_ui import ShortcutCapture
 from .service import MouseService
 from .settings import ButtonAction
 from .theme import STYLESHEET, Color
@@ -67,6 +75,7 @@ ACTIONS: list[tuple[str, int, int]] = [
     ("DPI -", ButtonClass.DPI, DpiValue.MINUS),
     ("Wheel up", ButtonClass.WHEEL, WheelValue.UP),
     ("Wheel down", ButtonClass.WHEEL, WheelValue.DOWN),
+    ("Keyboard combination", ButtonClass.SHORTCUT_KEY, 0),
     ("Switch report rate", ButtonClass.REPORT_RATE, 0),
     ("DPI lock", ButtonClass.DPI_LOCK, 0),
     ("Disabled", ButtonClass.CLOSE, 0),
@@ -242,6 +251,8 @@ class ProfileEditor(QWidget):
         page, layout = self._page()
         card = Card("Button assignments")
         self.button_combos: dict[str, Select] = {}
+        self.shortcut_captures: dict[str, ShortcutCapture] = {}
+        self.shortcut_fields: dict[str, QWidget] = {}
 
         for position, (name, (label, hint)) in enumerate(BUTTON_LABELS.items()):
             combo = Select()
@@ -253,9 +264,25 @@ class ProfileEditor(QWidget):
                 card.add(divider())
             card.add(Field(label, combo, hint))
 
+            # Only meaningful when the button is set to a keyboard combination,
+            # so it stays hidden the rest of the time.
+            capture = ShortcutCapture()
+            capture.changed.connect(self._on_edit)
+            self.shortcut_captures[name] = capture
+            field = Field("Combination", capture,
+                          f"Up to {SHORTCUT_MAX_KEYS} keys, stored on the mouse")
+            field.setVisible(False)
+            self.shortcut_fields[name] = field
+            card.add(field)
+
         layout.addWidget(card)
         layout.addStretch()
         return page
+
+    def _sync_shortcut_visibility(self) -> None:
+        for name, combo in self.button_combos.items():
+            _label, cls, _v1 = ACTIONS[combo.currentIndex()]
+            self.shortcut_fields[name].setVisible(cls == ButtonClass.SHORTCUT_KEY)
 
     def _build_performance_page(self) -> QWidget:
         page, layout = self._page()
@@ -376,6 +403,8 @@ class ProfileEditor(QWidget):
 
             for name, combo in self.button_combos.items():
                 combo.setCurrentIndex(self._action_index(settings.buttons.get(name)))
+                self.shortcut_captures[name].set_steps(settings.shortcuts.get(name, []))
+            self._sync_shortcut_visibility()
 
             self.motion_sync.setChecked(settings.motion_sync)
             self.linear_correction.setChecked(settings.linear_correction)
@@ -417,6 +446,9 @@ class ProfileEditor(QWidget):
                 macro = settings.macros[value1]
                 value2 = encode_repeat(macro.repeat_mode, macro.repeat_count)
             settings.buttons[name] = ButtonAction(int(cls), int(value1), value2)
+            settings.shortcuts[name] = list(self.shortcut_captures[name].steps)
+
+        self._sync_shortcut_visibility()
 
         settings.motion_sync = self.motion_sync.isChecked()
         settings.linear_correction = self.linear_correction.isChecked()

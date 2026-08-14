@@ -89,6 +89,7 @@ def test_ui_builds():
     print(f"  editor writes back to the profile ({before} -> 1234 -> {profile.settings.dpi_stages[0]})")
 
     test_macro_page(app)
+    test_shortcut_capture(app)
 
     QTimer.singleShot(200, app._quit)
     code = app.run()
@@ -146,6 +147,74 @@ def test_macro_page(app):
     macro.actions = macro.actions[:before]
     macro.name = ""
     combo.setCurrentIndex(3)
+    editor.collect()
+    print("  reverted")
+
+
+def test_shortcut_capture(app):
+    """The combination field must appear only for shortcut buttons and persist."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    from mousemod.protocol import ButtonClass
+    from mousemod.shortcuts import describe, to_usages
+    from mousemod.ui import ACTIONS
+
+    print("\n== shortcut capture ==")
+    editor = app.window.editor
+    profile = app.window.current_profile()
+
+    combo = editor.button_combos["side2"]
+    field = editor.shortcut_fields["side2"]
+    capture = editor.shortcut_captures["side2"]
+
+    plain = next(i for i, (_l, cls, _v) in enumerate(ACTIONS)
+                 if cls == ButtonClass.MOUSE)
+    # isVisible() is False for everything while the window is hidden, so ask
+    # whether the widget would be visible within its parent instead.
+    def shown() -> bool:
+        return field.isVisibleTo(field.parentWidget())
+
+    combo.setCurrentIndex(plain)
+    editor.collect()
+    assert not shown(), "combination field shown for a non-shortcut button"
+    print("  hidden for a plain mouse button  ok")
+
+    shortcut_index = next(i for i, (_l, cls, _v) in enumerate(ACTIONS)
+                          if cls == ButtonClass.SHORTCUT_KEY)
+    combo.setCurrentIndex(shortcut_index)
+    editor.collect()
+    assert shown(), "combination field hidden for a shortcut button"
+    print("  shown for a keyboard combination  ok")
+
+    # Drive the capture widget the way a real key press would.
+    capture._begin()
+    capture.keyPressEvent(
+        QKeyEvent(QEvent.KeyPress, Qt.Key_S, Qt.ControlModifier | Qt.ShiftModifier)
+    )
+    steps = capture.steps
+    assert len(steps) == 6, len(steps)
+    assert to_usages(steps) == [0xE0, 0xE1, 0x16], to_usages(steps)
+    print(f"  captured Ctrl+Shift+S -> {describe(steps)} ({len(steps)} entries)")
+
+    editor.collect()
+    stored = profile.settings.shortcuts["side2"]
+    assert stored == steps, "capture did not reach the profile"
+    print(f"  stored on the profile: {describe(stored)}")
+
+    # Escape must leave the previous value alone.
+    capture._begin()
+    capture.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+    assert capture.steps == steps, "escape changed the combination"
+    print("  escape cancels without changing it  ok")
+
+    # Delete clears.
+    capture._begin()
+    capture.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Delete, Qt.NoModifier))
+    assert capture.steps == [], capture.steps
+    print("  delete clears it  ok")
+
+    combo.setCurrentIndex(plain)
     editor.collect()
     print("  reverted")
 

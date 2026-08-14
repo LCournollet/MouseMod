@@ -19,6 +19,7 @@ Everything the web driver does:
 - Click debounce, sleep timer
 - Button remapping for all six buttons
 - **Macros** — 16 on-device slots, up to 70 actions each
+- **Keyboard combinations** — bind a chord like `Ctrl+Shift+S` to a button
 - Battery level, firmware version, factory reset
 
 Plus what it does not:
@@ -70,6 +71,18 @@ python -m mousemod profile          # list profiles
 python -m mousemod profile Valorant # apply one
 python -m mousemod save "My setup"  # snapshot the mouse into a new profile
 ```
+
+## Keyboard combinations
+
+Set a button to **Keyboard combination** in the Buttons tab, then click the
+field and press the chord you want — `Ctrl+Shift+S`, `Alt+F4`, or a single key.
+Escape cancels, Delete clears it.
+
+The mouse stores **three keys at most** per button (six entries, two per key),
+so `Ctrl+Shift+S` fits but `Ctrl+Alt+Shift+S` is shortened. The field says so
+when that happens.
+
+For anything longer, use a macro instead.
 
 ## Macros
 
@@ -141,6 +154,7 @@ mousemod/
   settings.py   typed read/write of every setting
   profiles.py   PC-side profile store
   macros.py     macro slots: encode, decode, read, write
+  shortcuts.py  per-button keyboard combinations
   keymap.py     Qt key <-> HID usage translation
   watcher.py    foreground-application detection
   hotkeys.py    system-wide hotkeys
@@ -149,6 +163,7 @@ mousemod/
   widgets.py    frameless window, toggles, cards, painted controls
   ui.py         the window and the tray
   macro_ui.py   the macro editor and keyboard recorder
+  shortcut_ui.py the chord capture control
   cli.py        command line
 tools/          icon generation
 recon/          the reverse-engineering scripts, kept for reference
@@ -161,6 +176,7 @@ tests/          codec, profile, write round-trip, UI smoke and render tests
 python -m tests.test_read       # codec checks + live read-only dump
 python -m tests.test_write      # live write round-trip, restores the original state
 python -m tests.test_macros     # macro codec + live round-trip, restores the slot
+python -m tests.test_shortcuts  # combination codec + live round-trip on side1
 python -m tests.test_ui_smoke   # profiles, hotkeys, macro editor, headless UI build
 python -m tests.test_wireless   # dongle path; unplug the cable first
 python -m tests.render_ui       # render each page to tests/_render for review

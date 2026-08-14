@@ -164,6 +164,45 @@ key2 center = 01 04 00   key5 bottom = 02 01 00
 `keyClass 6` means macro; `value2` then encodes the macro repeat mode.
 The F1 EXTREME sets `noBottomButton`, so `key5` is unused on this model.
 
+## Keyboard combinations
+
+One record per physical button at `256 + 32 * button_index`
+(`keyShortcuts0` = 256 … `keyShortcuts5` = 416), written as two 10-byte pages:
+
+| Page | Address | Contents |
+|---|---|---|
+| 0 | base | byte 0 = entry count, bytes 1–9 = payload[0:9] |
+| 1 | base + 10 | bytes 0–9 = payload[9:19] |
+
+The payload is the entries followed by one check byte:
+
+```python
+crc = (85 - sum([count] + entry_bytes)) & 0xFF
+```
+
+An entry is 3 bytes with the same byte-0 layout as a macro action, minus the
+delay:
+
+| Byte | Contents |
+|---|---|
+| 0 | bit 7 = down, bit 6 = up; bits 0–2 = key type |
+| 1 | `value1` — HID usage, or a modifier bitmask when the type is 0 |
+| 2 | `value2` |
+
+**Six entries maximum, and the firmware stores two per key** — every key down,
+then every key up — so a combination holds at most **three keys**. The web
+app's own reader confirms the pairing: it iterates `keyCount / 2` and rebuilds
+`{anyKeyCode, modifyCodes}`.
+
+MouseMod writes the downs in order and the ups in reverse, so a modifier is
+never released before the key it modifies.
+
+The button itself is set to `[5, 0, 0]` (`ButtonKeyClass.ShortcutKey`,
+internally labelled *combinationKey*); the key list lives only in this record.
+
+Verified on the device: `Ctrl+C` (4 entries, one page), `Ctrl+Shift+S`
+(6 entries, spanning both pages), a single key (2 entries), and clearing.
+
 ## Macros
 
 16 slots, `768 + 384 * n` (so `macro0 = 768` … `macro15 = 6528`). Each slot is

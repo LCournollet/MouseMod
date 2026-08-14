@@ -81,6 +81,22 @@ class Addr(enum.IntEnum):
     ROLLING_DELAY = 227
 
 
+# --- keyboard shortcuts -------------------------------------------------------
+
+#: Per-button combination-key storage, one 32-byte record per physical button.
+SHORTCUT_BASE = 256
+SHORTCUT_STRIDE = 32
+SHORTCUT_ADDRESSES = [SHORTCUT_BASE + SHORTCUT_STRIDE * i for i in range(6)]
+
+#: Six 3-byte entries at most, i.e. three keys held then released.
+SHORTCUT_ENTRY_SIZE = 3
+SHORTCUT_MAX_ENTRIES = 6
+SHORTCUT_MAX_KEYS = SHORTCUT_MAX_ENTRIES // 2
+SHORTCUT_PAGE_SIZE = 10
+#: Page 0 holds the count in byte 0, so only 9 payload bytes fit there.
+SHORTCUT_FIRST_PAGE_PAYLOAD = 9
+
+
 # --- macros -------------------------------------------------------------------
 
 #: The 16 on-device macro slots, 384 bytes apart.
@@ -125,6 +141,27 @@ MACRO_STOP_IMMEDIATELY = 254
 MACRO_REPEAT_UNTIL_ANY_KEY = 255
 #: Anything below that is a literal loop count.
 MACRO_MAX_LOOPS = 252
+
+def pack_state_type(state: int, key_type: int) -> int:
+    """Byte 0 of a macro action or shortcut entry: state flags plus key type."""
+    flags = key_type & KEY_TYPE_MASK
+    if state == KeyState.DOWN:
+        flags |= STATE_DOWN_BIT
+    elif state == KeyState.UP:
+        flags |= STATE_UP_BIT
+    return flags
+
+
+def unpack_state_type(flags: int) -> tuple[int, int]:
+    """Inverse of :func:`pack_state_type`, returning (state, key_type)."""
+    if flags & STATE_UP_BIT:
+        state = int(KeyState.UP)
+    elif flags & STATE_DOWN_BIT:
+        state = int(KeyState.DOWN)
+    else:
+        state = int(KeyState.SCROLL)
+    return state, flags & KEY_TYPE_MASK
+
 
 #: HID modifier usages, in the bit order the firmware expects.
 MODIFIER_USAGES = {
