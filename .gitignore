@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build output
+build/
+dist/
+*.manifest
+
+# Node (only used to pretty-print the vendor bundle during reverse engineering)
+node_modules/
+package.json
+package-lock.json
+
+# Vendor material: the ATK HUB web bundle and everything extracted from it.
+# These are ATK's copyrighted files, downloaded locally for analysis only and
+# deliberately not redistributed. recon/*.py and recon/slice.js are ours.
+recon/index-*.js
+recon/page-site.min.js
+recon/hub_index.html
+recon/mouse_controller.js
+recon/address_map.js
+recon/commands.js
+
+# Generated locally
+tests/_render/
+tests/_tmp_profiles.json
+assets/icon-preview.png
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
